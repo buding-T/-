@@ -537,6 +537,8 @@ export const ARC_FLAME_KEY = 'fx-arc-flame';
 export const DREAM_KEY = 'fx-dream';
 export const ELEM_FIRE_KEY = 'fx-elem-fire';
 export const WATER_KEY = 'fx-water';
+export const FROST_KEY = 'fx-frost';
+export const STAR_KEY = 'fx-star';
 
 // ---------------------------------------------------------------------------
 // 帧布局（序号即 spritesheet 帧号）
@@ -650,15 +652,16 @@ const POSES: Pose[] = [
     armFx: -2,
     mouth: true,
   }),
-  // 15 幻棱闪避：低身侧滑、双臂后掠、前腿探出、衣发飘飞 + 速度线
+  // 15 幻棱闪避：超低空横掠——身体近乎水平、前腿笔直探出、
+  // 后腿深折、单手向后掠近地面，身后拖大弧残影 + 速度线
   pose({
-    lean: 2,
-    headLean: 2,
-    bob: 1,
-    legF: 2,
-    legB: -2,
-    legBShort: 2,
-    armFx: -2,
+    lean: 3,
+    headLean: 3,
+    bob: 2,
+    legF: 3,
+    legB: -3,
+    legBShort: 3,
+    armFx: -1,
     armBx: -2,
     speedLines: true,
   }),
@@ -1115,5 +1118,60 @@ export function buildCharacterArt(scene: Phaser.Scene) {
     wctx.closePath();
     wctx.fill();
     scene.textures.addCanvas(WATER_KEY, wc);
+  }
+
+  // 冰封球贴图：白霜芯 → 冰青 → 透明，外缘带碎冰晶
+  if (!scene.textures.exists(FROST_KEY)) {
+    const size = 28;
+    const rc = document.createElement('canvas');
+    rc.width = size;
+    rc.height = size;
+    const rctx = rc.getContext('2d')!;
+    const grad = rctx.createRadialGradient(size / 2, size / 2, 1, size / 2, size / 2, size / 2);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.35, 'rgba(180,240,255,0.95)');
+    grad.addColorStop(0.72, 'rgba(90,190,255,0.6)');
+    grad.addColorStop(1, 'rgba(60,140,220,0)');
+    rctx.fillStyle = grad;
+    rctx.fillRect(0, 0, size, size);
+    // 碎冰晶高光
+    rctx.fillStyle = 'rgba(255,255,255,0.9)';
+    rctx.fillRect(7, 6, 2, 2);
+    rctx.fillRect(19, 9, 2, 2);
+    rctx.fillRect(9, 19, 2, 2);
+    scene.textures.addCanvas(FROST_KEY, rc);
+  }
+
+  // 三连星星屑贴图：金黄小四角星 + 白芯 + 微光拖尾
+  if (!scene.textures.exists(STAR_KEY)) {
+    const size = 18;
+    const sc = document.createElement('canvas');
+    sc.width = size;
+    sc.height = size;
+    const sctx = sc.getContext('2d')!;
+    const cx = size / 2;
+    const cy = size / 2;
+    sctx.fillStyle = 'rgba(255,210,110,0.4)';
+    sctx.beginPath();
+    sctx.moveTo(cx - 2, cy - 2);
+    sctx.lineTo(1, cy);
+    sctx.lineTo(cx - 2, cy + 2);
+    sctx.closePath();
+    sctx.fill();
+    sctx.fillStyle = '#ffd978';
+    sctx.beginPath();
+    sctx.moveTo(cx, 2);
+    sctx.lineTo(cx + 3, cy - 3);
+    sctx.lineTo(size - 2, cy);
+    sctx.lineTo(cx + 3, cy + 3);
+    sctx.lineTo(cx, size - 2);
+    sctx.lineTo(cx - 3, cy + 3);
+    sctx.lineTo(2, cy);
+    sctx.lineTo(cx - 3, cy - 3);
+    sctx.closePath();
+    sctx.fill();
+    sctx.fillStyle = '#fffbe0';
+    sctx.fillRect(cx - 1.5, cy - 1.5, 3, 3);
+    scene.textures.addCanvas(STAR_KEY, sc);
   }
 }

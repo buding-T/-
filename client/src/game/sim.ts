@@ -95,6 +95,26 @@ import {
   ARC5_ARMOR_FRAMES,
   ARC5_KB_MUL,
   ARC5_REFLECT,
+  ARC6_ORB_SPEED,
+  ARC6_ORB_R,
+  ARC6_ORB_LIFE,
+  ARC6_HIT_KB,
+  ARC6_ZONE_W,
+  ARC6_ZONE_FRAMES,
+  ARC6_ZONE_DAMP,
+  ARC7_DASH_FRAMES,
+  ARC7_DASH_SPEED,
+  ARC7_DMG,
+  ARC8_STAR_SPEED,
+  ARC8_STAR_R,
+  ARC8_STAR_LIFE,
+  ARC8_SPREAD,
+  ARC8_STAR_DMG,
+  ARC8_STAR_BASE,
+  ARC8_STAR_GROWTH,
+  ARC9_FRAMES,
+  ARC9_DMG_MUL,
+  ARC9_KB_MUL,
   ARCANA_CD_FRAMES,
   ARCANA_LOCK_FRAMES,
   DART_R as DART_RADIUS,
@@ -278,11 +298,13 @@ export interface Fighter {
   vampT: number; // 吸血鬼：主动增强剩余帧（被动恢复 +1%）
   manCharge: number; // 狂徒：本次蓄力已进行帧（松手即轰出）
   manBurstT: number; // 狂徒：轰拳爆光剩余帧
+  lungeT: number; // 雷光瞬闪：无敌冲刺剩余帧（移动与判定）
+  berserkT: number; // 焚血狂战：增益剩余帧（伤害+30%/受击退+15%）
   respawn: number; // >0：等待复活的剩余帧
   dead: boolean;
 }
 
-/** 飞行物（火球 / 飞镖 / 烈炎弹 / 梦火弹 / 元素火弹 / 待爆水弹） */
+/** 飞行物（火球 / 飞镖 / 烈炎弹 / 梦火弹 / 元素火弹 / 待爆水弹 / 冰封球 / 三连星） */
 export interface Projectile {
   n: number; // 权威端内唯一序号（渲染层去重/插值用）
   x: number;
@@ -292,11 +314,21 @@ export interface Projectile {
   life: number;
   owner: 0 | 1;
   r: number;
-  /** 0 火球 / 1 飞镖（只标记）/ 2 烈炎弹（按击飞值击退）/ 3 梦火弹（易伤：受击退+20%）/ 4 元素火弹（35% 击退）/ 5 待爆水弹（定点延迟爆炸） */
-  k: 0 | 1 | 2 | 3 | 4 | 5;
+  /** 0 火球 / 1 飞镖（只标记）/ 2 烈炎弹（按击飞值击退）/ 3 梦火弹（易伤）/ 4 元素火弹（75% 击退）/ 5 待爆水弹（定点爆炸）/ 6 冰封球（35% 击退+展开领域）/ 8 三连星（4 伤害） */
+  k: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 8;
   /** k=5 水弹：爆炸中心定点坐标（静止待爆） */
   tx: number;
   ty: number;
+}
+
+/** 冰封领域：地面减速区域（域内敌人水平速度受阻尼，跳起可越过） */
+export interface FrostZone {
+  n: number;
+  x: number; // 中心 x
+  y: number; // 站立中心 y（判定高度，跳起越过）
+  w: number;
+  t: number; // 剩余帧
+  owner: 0 | 1;
 }
 
 export interface Box {
@@ -400,6 +432,8 @@ export function createFighter(
     vampT: 0,
     manCharge: 0,
     manBurstT: 0,
+    lungeT: 0,
+    berserkT: 0,
     respawn: 0,
     dead: false,
   };
@@ -456,6 +490,8 @@ function placeRespawn(f: Fighter) {
   f.vampT = 0;
   f.manCharge = 0;
   f.manBurstT = 0;
+  f.lungeT = 0;
+  f.berserkT = 0;
   f.invuln = RESPAWN_INVULN;
 }
 
@@ -522,7 +558,7 @@ function isArcInvuln(f: Fighter): boolean {
   );
 }
 
-/** 本帧不可被命中/抓取：复活无敌、幻棱特写慢动作、鬼人突进斩、重击前摇 */
+/** 本帧不可被命中/抓取：复活无敌、幻棱特写慢动作、鬼人突进斩、雷光瞬闪、重击前摇 */
 function isUntouchable(f: Fighter): boolean {
   return (
     f.dead ||
@@ -530,6 +566,7 @@ function isUntouchable(f: Fighter): boolean {
     f.invuln > 0 ||
     f.phSlowT > 0 ||
     f.oniDiveT > 0 ||
+    f.lungeT > 0 ||
     isArcInvuln(f)
   );
 }
@@ -717,7 +754,7 @@ function startSkill(f: Fighter, input: InputState) {
       f.queuedSkill = 16;
       f.vx = 0;
     } else {
-      // 幻棱一段：0.5 秒闪避姿态（期间受击触发成功）
+      // 幻棱一段：0.4 秒超低空横掠闪避（期间受击触发成功）
       f.skillPhase = 0;
       f.phDodgeT = SKILL16_DODGE_FRAMES;
       f.queuedSkill = -1;
@@ -767,6 +804,20 @@ function startArcana(f: Fighter, ix: number) {
     // 烈炎弹：飞行物由 Sim 结算生成
     f.queuedArcana = 2;
     if (f.onGround) f.vx *= 0.3;
+  } else if (k === 6) {
+    // 冰封领域：冰球由 Sim 结算生成（命中/落点展开领域）
+    f.queuedArcana = 6;
+    if (f.onGround) f.vx *= 0.3;
+  } else if (k === 7) {
+    // 雷光瞬闪：0.13 秒无敌前掠（位移/判定由 Sim 结算）
+    f.lungeT = ARC7_DASH_FRAMES;
+  } else if (k === 8) {
+    // 三连星：3 枚星屑由 Sim 结算扇形生成
+    f.queuedArcana = 8;
+    if (f.onGround) f.vx *= 0.3;
+  } else if (k === 9) {
+    // 焚血狂战：立刻进入 6 秒增益
+    f.berserkT = ARC9_FRAMES;
   } else if (k === 3) {
     // 风翼：1 秒匀速向上飞翔（无重力，可水平微调）
     f.wingT = ARC3_WING_FRAMES;
@@ -852,6 +903,7 @@ export function stepFighter(f: Fighter, input: InputState, map: MapDef) {
   }
   if (f.vampT > 0) f.vampT -= 1; // 吸血鬼：主动增强窗口
   if (f.manBurstT > 0) f.manBurstT -= 1; // 狂徒：轰拳爆光
+  if (f.berserkT > 0) f.berserkT -= 1; // 焚血狂战：增益窗口
 
   // 被斗士擒抱中：完全不能行动，位置由 Sim 每帧强制拖到施法者身前
   if (f.grabbedBy >= 0) return;
@@ -894,11 +946,19 @@ export function stepFighter(f: Fighter, input: InputState, map: MapDef) {
   } else if (castingSkill) {
     f.modeT += 1;
     if (f.arcMode) {
-      // 秘术施法：重击 0.5 秒前摇结束当帧排队；风翼持续向上飞
+      // 秘术施法：重击 0.5 秒前摇结束当帧排队；风翼持续向上飞；雷光瞬闪无敌前掠
       if (f.arcKind === 4 && f.modeT === ARC4_STARTUP) {
         f.queuedArcana = 4;
       }
-      if (f.wingT > 0) {
+      if (f.arcKind === 7) {
+        // 雷光瞬闪：冲刺帧水平无敌前掠（判定由 Sim.resolveLunge 结算），结束定身收招
+        if (f.lungeT > 0) {
+          f.vx = f.face * ARC7_DASH_SPEED;
+          f.vy = 0;
+        } else {
+          f.vx = 0;
+        }
+      } else if (f.wingT > 0) {
         f.wingT -= 1;
         f.vy = ARC3_WING_VY;
         const wingAccel = AIR_ACCEL * DT;
@@ -970,7 +1030,7 @@ export function stepFighter(f: Fighter, input: InputState, map: MapDef) {
       }
     } else if (f.skillKind === 16) {
       if (f.skillPhase === 3 && f.phTeleT > 0) {
-        // 瞬移待斩：0.25 秒后发动（当帧排队，由 Sim 结算伤害）
+        // 瞬移待斩：0.1 秒后发动（当帧排队，由 Sim 结算伤害）
         f.phTeleT -= 1;
         if (f.phTeleT === 0) f.queuedSkill = 16;
       }
@@ -1189,9 +1249,11 @@ export function stepFighter(f: Fighter, input: InputState, map: MapDef) {
       else if (f.skillPhase === 1) lockFrames = SKILL3_TELE_STARTUP + SKILL3_TELE_LOCK;
       else lockFrames = SKILL3_TELE_LOCK;
     } else if (f.skillKind === 16) {
-      // 幻棱：闪避姿态与慢动作由计时器退出；二段定位当帧由 resolveSkills 转阶段
+      // 幻棱：闪避姿态与慢动作由计时器退出；瞬移当帧转阶段；
+      // phase4 = 瞬斩后小后摇；phase2 = 空甩短动作
       if (f.skillPhase === 0 || f.skillPhase === 1) lockFrames = Infinity;
-      else if (f.skillPhase === 3) lockFrames = SKILL16_STRIKE_LOCK;
+      else if (f.skillPhase === 3) lockFrames = Infinity;
+      else if (f.skillPhase === 4) lockFrames = SKILL16_STRIKE_LOCK;
       else lockFrames = SKILL16_FIZZLE_LOCK;
     } else if (f.skillKind === 19) {
       // 狂徒：蓄力由松手/蓄满退出；轰拳后 22 帧收招
@@ -1260,6 +1322,8 @@ function applyHit(
     dmgApplied = dmg * (1 + SKILL17_BONUS);
     attacker.srcCharged = false;
   }
+  // 焚血狂战：增益期间造成伤害 +30%
+  if (attacker.berserkT > 0) dmgApplied *= ARC9_DMG_MUL;
   target.dmg = Math.min(MAX_DMG, target.dmg + dmgApplied);
   let power = base + target.dmg * growth;
   // 蝶的护盾：伤害照常吃，击退力度（含硬直）减少 60%
@@ -1271,6 +1335,8 @@ function applyHit(
   if (target.weakT > 0) power *= DREAM_KB_MUL;
   // 元素使土盾：1.5 秒内受到的击退 ×0.75
   if (target.earthT > 0) power *= ELEM_EARTH_KB_MUL;
+  // 焚血狂战：玻璃大炮——受到的击退 +15%
+  if (target.berserkT > 0) power *= ARC9_KB_MUL;
   // 赤焰被动：造成的所有击飞力度 +4.44%
   if (attacker.char === 0) power *= BLAZE_KB_MUL;
   // 祭司被动：每损失 1% 击飞值，造成的击退 +0.5%
@@ -1446,6 +1512,8 @@ function centerDist(a: { x: number; y: number }, b: { x: number; y: number }) {
 export class Sim {
   fighters: [Fighter, Fighter];
   projectiles: Projectile[] = [];
+  frostZones: FrostZone[] = [];
+  private frostSeq = 0;
   private chars: [number, number];
   private arcanas: [number, number];
   /** 当前对战地图（reset 时可更换） */
@@ -1477,6 +1545,8 @@ export class Sim {
       createFighter(1, this.chars[1], this.map, this.arcanas[1]),
     ];
     this.projectiles = [];
+    this.frostZones = [];
+    this.frostSeq = 0;
     this.projSeq = 0;
     this.tick = 0;
     this.over = false;
@@ -1495,6 +1565,9 @@ export class Sim {
     this.maintainGrapples();
     this.resolveArcana(this.fighters[0], this.fighters[1]);
     this.resolveArcana(this.fighters[1], this.fighters[0]);
+    this.resolveLunge(this.fighters[0], this.fighters[1]);
+    this.resolveLunge(this.fighters[1], this.fighters[0]);
+    this.stepFrostZones();
     this.stepProjectiles();
     this.updateMarks();
     resolveCombat(this.fighters[0], this.fighters[1], this.events);
@@ -1749,10 +1822,11 @@ export class Sim {
         }
         return;
       }
-      // 瞬移 0.25 秒后出手：造成敌人当前击飞值 85% 的伤害
+      // 瞬移 0.1 秒后瞬斩：造成敌人当前击飞值 85% 的伤害，随后进入小后摇（phase4）
       const tid = caster.phTgt;
       caster.phTgt = -1;
-      caster.skillPhase = 0;
+      caster.skillPhase = 4;
+      caster.modeT = 0;
       caster.skillCd = SKILL16_DONE_CD;
       if (tid !== 0 && tid !== 1) return;
       const tgt = this.fighters[tid];
@@ -1893,6 +1967,44 @@ export class Sim {
       return;
     }
 
+    if (kind === 6) {
+      // 冰封领域：直线冰球，命中/到期后在落点展开 4 秒冰封领域
+      this.projectiles.push({
+        n: this.projSeq++,
+        x: caster.x + caster.face * (caster.w / 2 + ARC6_ORB_R),
+        y: caster.y - 2,
+        vx: caster.face * ARC6_ORB_SPEED,
+        vy: 0,
+        life: ARC6_ORB_LIFE,
+        owner: caster.id,
+        r: ARC6_ORB_R,
+        k: 6,
+        tx: 0,
+        ty: 0,
+      });
+      return;
+    }
+
+    if (kind === 8) {
+      // 三连星：扇形射出 3 枚星屑（中/上/下），射程短、每枚 4 伤害
+      for (const a of [-ARC8_SPREAD, 0, ARC8_SPREAD]) {
+        this.projectiles.push({
+          n: this.projSeq++,
+          x: caster.x + caster.face * (caster.w / 2 + ARC8_STAR_R),
+          y: caster.y - 2,
+          vx: caster.face * ARC8_STAR_SPEED * Math.cos(a),
+          vy: ARC8_STAR_SPEED * Math.sin(a),
+          life: ARC8_STAR_LIFE,
+          owner: caster.id,
+          r: ARC8_STAR_R,
+          k: 8,
+          tx: 0,
+          ty: 0,
+        });
+      }
+      return;
+    }
+
     if (kind === 4) {
       // 重击：0.5 秒无敌前摇后判定前方大盒，造成敌人当前击飞值 100% 的伤害
       if (isUntouchable(target) || target.grabbedBy >= 0) return;
@@ -1927,6 +2039,83 @@ export class Sim {
     }
   }
 
+  /** 查找 x 处实地面板顶面（无地面返回 null），用于冰封领域落点 */
+  private floorTopAt(x: number): number | null {
+    let best: number | null = null;
+    for (const g of this.map.floors) {
+      if (x >= g.x && x <= g.x + g.w && (best === null || g.y < best)) best = g.y;
+    }
+    return best;
+  }
+
+  /** 在落点展开冰封领域（无地面则不展开） */
+  private spawnFrostZone(x: number, owner: 0 | 1) {
+    const top = this.floorTopAt(x);
+    if (top === null) return;
+    this.frostZones.push({
+      n: this.frostSeq++,
+      x,
+      y: top - FIGHTER_H / 2,
+      w: ARC6_ZONE_W,
+      t: ARC6_ZONE_FRAMES,
+      owner,
+    });
+  }
+
+  /** 冰封领域：寿命递减；敌方域内且贴近地面时水平速度受阻尼（跳起可越过） */
+  private stepFrostZones() {
+    for (let i = this.frostZones.length - 1; i >= 0; i--) {
+      const z = this.frostZones[i];
+      z.t -= 1;
+      if (z.t <= 0) {
+        this.frostZones.splice(i, 1);
+        continue;
+      }
+      const f = this.fighters[z.owner === 0 ? 1 : 0];
+      if (f.dead || f.respawn > 0) continue;
+      const inX = Math.abs(f.x - z.x) < z.w / 2 + f.w / 2;
+      const lowEnough = Math.abs(f.y - z.y) < 46;
+      if (inX && lowEnough) f.vx *= ARC6_ZONE_DAMP;
+    }
+  }
+
+  /** 雷光瞬闪：冲刺帧判定身体是否掠过敌人（虚无招架/幻棱闪避可应对），只命中一次 */
+  private resolveLunge(caster: Fighter, target: Fighter) {
+    if (!caster.arcMode || caster.arcKind !== 7) return;
+    if (caster.lungeT > 0) {
+      if (!caster.hitDone) {
+        const box: Box = {
+          x: caster.x + caster.face * 10,
+          y: caster.y,
+          w: 36,
+          h: caster.h,
+        };
+        if (overlap(box, hurtBox(target))) {
+          if (target.voidGuardT > 0) {
+            triggerVoidGuard(target, caster, 0, ARC7_DMG, this.events);
+            caster.hitDone = true;
+          } else if (isPhDodging(target)) {
+            triggerPhantomDodge(target, this.events);
+            caster.hitDone = true;
+          } else if (!isUntouchable(target) && target.grabbedBy < 0) {
+            caster.hitDone = true;
+            const dmgAdd = Math.round(target.dmg * ARC7_DMG * 10) / 10;
+            const power = applyHit(caster, target, dmgAdd, 0, ARC7_DMG);
+            this.events.push({
+              type: 'hit',
+              by: caster.id,
+              target: target.id,
+              dmg: dmgAdd,
+              power,
+            });
+          }
+        }
+      }
+      // 起手当帧（modeT===0，位移尚未开始）不消耗冲刺帧，保证 8 帧 230px
+      if (caster.modeT > 0) caster.lungeT -= 1;
+    }
+  }
+
   /**
    * 纯击退命中（不增加击飞值）：烈炎弹 / 元素火弹 / 水爆共用。
    * frac 为敌人当前击飞值转化为击退力度的比例，返回实际力度（0 = 未生效）。
@@ -1944,6 +2133,7 @@ export class Sim {
     if (armored) power *= ARC5_KB_MUL;
     if (target.weakT > 0) power *= DREAM_KB_MUL; // 易伤：所有来源的击退都增幅
     if (target.earthT > 0) power *= ELEM_EARTH_KB_MUL;
+    if (target.berserkT > 0) power *= ARC9_KB_MUL; // 焚血狂战：纯击退来源也 +15%
     if (owner.char === 0) power *= BLAZE_KB_MUL;
     if (power <= 0) return 0;
     const dir = target.x >= fromX ? 1 : -1;
@@ -2026,6 +2216,9 @@ export class Sim {
           triggerVoidGuard(target, owner, 0, ARC2_FLAME_KB, this.events);
         } else if (p.k === 4) {
           triggerVoidGuard(target, owner, 0, ELEM_FIRE_KB, this.events);
+        } else if (p.k === 6) {
+          // 冰球被招架：按 35% 力度反震，领域不展开
+          triggerVoidGuard(target, owner, 0, ARC6_HIT_KB, this.events);
         }
       } else if (hitTarget && isPhDodging(target)) {
         // 幻棱闪避：吞下来袭飞行物，触发成功（特写慢动作 + 解锁二段）
@@ -2055,6 +2248,22 @@ export class Sim {
           if (power > 0) {
             this.events.push({ type: 'hit', by: p.owner, target: target.id, dmg: 0, power });
           }
+        } else if (p.k === 6) {
+          // 冰封球命中：35% 击飞值小击退，并在落点展开冰封领域
+          const power = this.pureKnockback(owner, target, ARC6_HIT_KB, owner.x);
+          this.spawnFrostZone(p.x, p.owner);
+          if (power > 0) {
+            this.events.push({ type: 'hit', by: p.owner, target: target.id, dmg: 0, power });
+          }
+        } else if (p.k === 8) {
+          // 三连星：每枚 4 伤害、小击退（base 120 / growth 4）
+          const dmg = ARC8_STAR_DMG;
+          const power = applyHit(
+            owner, target, dmg, ARC8_STAR_BASE, ARC8_STAR_GROWTH,
+          );
+          this.events.push({
+            type: 'hit', by: p.owner, target: target.id, dmg, power,
+          });
         } else {
           const dmg = FIREBALL_DMG;
           const power = applyHit(
@@ -2087,6 +2296,8 @@ export class Sim {
           owner.dartActive = false;
           if (!consumed) owner.skillCd = SKILL3_CD_FRAMES;
         }
+        // 冰封球到期未命中：在落点展开领域（无地面则不展开）
+        if (!consumed && p.k === 6) this.spawnFrostZone(p.x, p.owner);
         this.projectiles.splice(i, 1);
       }
     }

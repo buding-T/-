@@ -9,6 +9,8 @@ import {
   DREAM_KEY,
   ELEM_FIRE_KEY,
   WATER_KEY,
+  FROST_KEY,
+  STAR_KEY,
   FRAME_H,
   animKey,
   sheetKey,
@@ -39,7 +41,6 @@ import {
   SKILL12_FURY_FRAMES,
   SKILL13_LOCK,
   SKILL14_LOCK,
-  SKILL16_DODGE_FRAMES,
   SKILL16_FAIL_CD,
   SKILL16_DONE_CD,
   SKILL16_SLOW_FRAMES,
@@ -74,6 +75,7 @@ import {
   createFighter,
   stepFighter,
   type Fighter,
+  type FrostZone,
   type Projectile,
   Sim,
 } from '../game/sim';
@@ -144,6 +146,7 @@ export class BattleScene extends Phaser.Scene {
   private mapText!: Phaser.GameObjects.Text;
   private stageGfx!: Phaser.GameObjects.Graphics;
   private remoteProjectiles: Projectile[] = [];
+  private remoteFrostZones: FrostZone[] = [];
   private projSprites = new Map<number, Phaser.GameObjects.Image>();
   /** 降水爆炸水波（权威事件驱动，存活 16 帧） */
   private waterBursts: Array<{ x: number; y: number; r: number; born: number }> = [];
@@ -225,6 +228,7 @@ export class BattleScene extends Phaser.Scene {
       this.arcanas[(1 - this.myId) as 0 | 1],
     );
     this.remoteProjectiles = [];
+    this.remoteFrostZones = [];
     for (const s of this.projSprites.values()) s.destroy();
     this.projSprites.clear();
     this.waterBursts = [];
@@ -461,6 +465,7 @@ export class BattleScene extends Phaser.Scene {
     this.redrawStage();
     this.remoteBuf = [];
     this.remoteProjectiles = [];
+    this.remoteFrostZones = [];
     for (const s of this.projSprites.values()) s.destroy();
     this.projSprites.clear();
     this.waterBursts = [];
@@ -485,6 +490,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.phase === 'over') return;
 
     this.remoteProjectiles = msg.p ?? [];
+    this.remoteFrostZones = msg.z ?? [];
 
     // 远端插值缓冲
     this.remoteBuf.push({ snap: msg, t: performance.now() });
@@ -553,6 +559,7 @@ export class BattleScene extends Phaser.Scene {
         ack: this.guestAck,
         f: this.sim.fighters,
         p: this.sim.projectiles,
+        z: this.sim.frostZones,
       });
     }
 
@@ -1066,9 +1073,16 @@ export class BattleScene extends Phaser.Scene {
       for (const gh of ghosts) gh.setVisible(false);
     }
 
-    // 幻棱闪避：身体随时间轻微摆动营造飘逸感（其余状态角度归零）
-    if (this.chars[id] === 16 && f.mode === 'skill' && f.skillPhase === 0) {
-      spr.setRotation(Math.sin((f.modeT + 1) * 0.4) * 0.09);
+    // 幻棱闪避：超低空横掠期间身体大幅前倾并轻微摆动；其余状态角度归零
+    if (
+      this.chars[id] === 16 &&
+      f.mode === 'skill' &&
+      f.skillPhase === 0 &&
+      f.phDodgeT > 0
+    ) {
+      spr.setRotation(
+        f.face * (0.2 + Math.sin((f.modeT + 1) * 0.55) * 0.06),
+      );
     } else {
       spr.setRotation(0);
     }
@@ -1237,21 +1251,26 @@ export class BattleScene extends Phaser.Scene {
     // 幻棱（16）：闪避青光、特写棱光、二段待斩斩光
     if (ch === 16) {
       if (f.phDodgeT > 0) {
-        const t = f.phDodgeT / SKILL16_DODGE_FRAMES;
-        // 低身横掠的贴身青光
-        g.fillStyle(0x7de0ff, 0.12);
-        g.fillEllipse(f.x, f.y + 2, 34, 40);
-        // 身后三道渐远飘带，随时间循环流动
+        // 超低空横掠：身后巨大白色弧刃残影（参考动作），三层渐远
         for (let i = 0; i < 3; i++) {
-          const k = (i + (1 - t) * 3) % 3;
-          g.lineStyle(2, 0x7de0ff, 0.55 - k * 0.14);
-          g.strokeEllipse(
-            f.x - f.face * (6 + k * 7), f.y + 2 - k,
-            22 + k * 6, 36 + k * 4,
+          const r = 44 - i * 8;
+          g.lineStyle(5 - i, i === 0 ? 0xffffff : 0x7de0ff, 0.55 - i * 0.13);
+          g.beginPath();
+          g.arc(
+            f.x - f.face * (4 + i * 3),
+            f.y + 6,
+            r,
+            f.face > 0 ? Math.PI * 0.55 : -Math.PI * 0.45,
+            f.face > 0 ? Math.PI * 1.45 : Math.PI * 0.45,
+            false,
           );
+          g.strokePath();
         }
-        g.fillStyle(0x8f7bff, 0.1);
-        g.fillEllipse(f.x - f.face * 6, f.y, 22, 42);
+        // 贴地青蓝旋光
+        g.fillStyle(0x7de0ff, 0.16);
+        g.fillEllipse(f.x, f.y + 20, 46, 12);
+        g.lineStyle(2, 0xbfefff, 0.8);
+        g.strokeEllipse(f.x, f.y + 20, 42, 10);
       }
       if (f.phSlowT > 0) {
         const t = f.phSlowT / SKILL16_SLOW_FRAMES;
@@ -1263,15 +1282,12 @@ export class BattleScene extends Phaser.Scene {
         g.fillCircle(f.x, f.y - 2, 3);
       }
       if (f.phTeleT > 0) {
+        // 瞬移后 0.1 秒瞬斩蓄光（快速拉满）
         const t = 1 - f.phTeleT / SKILL16_DELAY_FRAMES;
-        g.fillStyle(0xffffff, 0.3 + 0.5 * t);
-        g.fillTriangle(
-          f.x + f.face * 8, f.y - 14,
-          f.x + f.face * (10 + 14 * t), f.y - 2,
-          f.x + f.face * 8, f.y + 10,
-        );
-        g.fillStyle(0x8f7bff, 0.25);
-        g.fillEllipse(f.x, f.y - 2, 26, 46);
+        g.fillStyle(0xffffff, 0.22 + 0.42 * t);
+        g.fillEllipse(f.x + f.face * 6, f.y - 2, 18 + 12 * t, 40);
+        g.fillStyle(0x7de0ff, 0.2 + 0.3 * t);
+        g.fillEllipse(f.x + f.face * 4, f.y - 2, 12 + 8 * t, 34);
       }
     }
 
@@ -1302,6 +1318,44 @@ export class BattleScene extends Phaser.Scene {
         g.fillEllipse(f.x + f.face * (r / 2 - 6), f.y - 2, r, 72 * (1 - t * 0.4));
         g.fillStyle(0xffffff, 0.7 * (1 - t));
         g.fillEllipse(f.x + f.face * (r / 2 - 6), f.y - 2, r * 0.5, 40 * (1 - t * 0.4));
+      }
+    }
+
+    // 雷光瞬闪：冲刺帧身后三道疾光
+    if (f.lungeT > 0) {
+      for (let i = 0; i < 3; i++) {
+        g.lineStyle(3 - i, i === 0 ? 0xffffff : 0x6fa8ff, 0.8 - i * 0.2);
+        g.lineBetween(
+          f.x - f.face * (8 + i * 9), f.y - 2 + (i - 1) * 8,
+          f.x - f.face * (22 + i * 9), f.y - 2 + (i - 1) * 8,
+        );
+      }
+    }
+    // 焚血狂战：猩红焰环脉动（玻璃大炮增益提示）
+    if (f.berserkT > 0) {
+      const c = 1 + 0.08 * Math.sin(now / 60);
+      g.fillStyle(0xff6e5e, 0.1);
+      g.fillEllipse(f.x, f.y - 2, 34 * c, 54 * c);
+      g.lineStyle(2, 0xff8a3c, 0.6 + 0.2 * Math.sin(now / 90));
+      g.strokeEllipse(f.x, f.y - 2, 32 * c, 52 * c);
+    }
+    // 冰封领域地面（id===0 全量绘制一次；冰面+冰刺，临消失淡出）
+    if (id === 0) {
+      const zones = this.role === 'host' ? this.sim.frostZones : this.remoteFrostZones;
+      for (const z of zones) {
+        const fade = z.t < 30 ? z.t / 30 : 1;
+        g.fillStyle(0x8fe3ff, 0.14 * fade);
+        g.fillEllipse(z.x, z.y + 26, z.w, 16);
+        g.lineStyle(2, 0xbfefff, 0.7 * fade);
+        g.strokeEllipse(z.x, z.y + 26, z.w, 16);
+        for (let s = -2; s <= 2; s++) {
+          g.fillStyle(0xffffff, 0.5 * fade);
+          g.fillTriangle(
+            z.x + (s * z.w) / 5 - 2, z.y + 26,
+            z.x + (s * z.w) / 5, z.y + 17,
+            z.x + (s * z.w) / 5 + 2, z.y + 26,
+          );
+        }
       }
     }
 
@@ -1346,13 +1400,15 @@ export class BattleScene extends Phaser.Scene {
         g.fillCircle(f.x, f.y, 12 + 26 * t);
       }
     } else if (ch === 16) {
-      if (f.skillPhase === 3) {
-        // 背刺斩击：白紫交错斩光随收招淡出
+      if (f.skillPhase === 4) {
+        // 瞬斩收招：横向蓝白快刃光贯穿敌人后快速淡出（小后摇 12 帧）
         const t = Phaser.Math.Clamp((f.modeT + 1) / SKILL16_STRIKE_LOCK, 0, 1);
-        g.lineStyle(5, 0xffffff, 0.8 * (1 - t));
-        g.lineBetween(f.x + f.face * 4, f.y - 16 + 8 * t, f.x + f.face * 34, f.y + 12 - 8 * t);
-        g.lineStyle(2, 0x8f7bff, 0.7 * (1 - t));
-        g.lineBetween(f.x + f.face * 2, f.y - 10, f.x + f.face * 30, f.y + 16);
+        g.lineStyle(5, 0xffffff, 0.85 * (1 - t));
+        g.lineBetween(f.x - f.face * 6, f.y - 2, f.x + f.face * 58, f.y - 2);
+        g.lineStyle(2, 0x7de0ff, 0.8 * (1 - t));
+        g.lineBetween(f.x - f.face * 4, f.y + 6, f.x + f.face * 52, f.y + 6);
+        g.lineStyle(2, 0x8f7bff, 0.6 * (1 - t));
+        g.lineBetween(f.x - f.face * 4, f.y - 10, f.x + f.face * 46, f.y - 10);
       }
     } else if (ch === 7) {
       // 噩梦：扩散紫环 + 头顶闭合的咒眼
@@ -1602,6 +1658,56 @@ export class BattleScene extends Phaser.Scene {
         g.lineStyle(5, 0xb58bff, 0.7 * (1 - t));
         g.strokeEllipse(f.x, f.y - 2, 30 + 60 * t, 44 + 70 * t);
         break;
+      case 6: {
+        // 冰封领域：出手前前面方凝起冰球（出手后由飞行物本体呈现）
+        if (f.modeT < 10) {
+          const c = 1 + 0.2 * Math.sin(now / 45);
+          g.fillStyle(0x8fe3ff, 0.45);
+          g.fillCircle(f.x + f.face * 18, f.y - 6, (4 + 5 * t) * c);
+          g.fillStyle(0xffffff, 0.9);
+          g.fillCircle(f.x + f.face * 18, f.y - 6, (2 + 2 * t) * c);
+          // 碎冰晶
+          g.fillStyle(0xbfefff, 0.8);
+          g.fillRect(f.x + f.face * 26, f.y - 12, 2, 2);
+          g.fillRect(f.x + f.face * 22, f.y - 2, 2, 2);
+        } else {
+          g.fillStyle(0x8fe3ff, 0.3 * (1 - t));
+          g.fillCircle(f.x + f.face * 22, f.y - 6, 12 * (1 - t) + 4);
+        }
+        break;
+      }
+      case 7: {
+        // 雷光瞬闪：起手聚雷后全程前向疾光（持续身光在无条件区绘制）
+        g.lineStyle(3, 0x6fa8ff, 0.85);
+        g.lineBetween(
+          f.x - f.face * 6, f.y - 2,
+          f.x - f.face * 22, f.y - 2 + 3 * Math.sin(now / 25),
+        );
+        g.fillStyle(0xffffff, 0.9);
+        g.fillCircle(f.x + f.face * 6, f.y - 2, 2.5 + 1.5 * Math.sin(now / 40));
+        break;
+      }
+      case 8: {
+        // 三连星：出手前三颗金星在身前依次亮起（出手后由飞行物呈现）
+        if (f.modeT < 10) {
+          for (let s = 0; s < 3; s++) {
+            const on = f.modeT >= s * 2;
+            g.fillStyle(on ? 0xffd978 : 0x6a5a30, on ? 0.95 : 0.5);
+            g.fillCircle(f.x + f.face * (12 + s * 7), f.y - 4 + (s - 1) * 9, 2.4);
+          }
+        } else {
+          g.fillStyle(0xffd978, 0.35 * (1 - t));
+          g.fillCircle(f.x + f.face * 22, f.y - 4, 12 * (1 - t) + 3);
+        }
+        break;
+      }
+      case 9:
+        // 焚血狂战：瞬间赤焰爆发（持续焰环在无条件区绘制）
+        g.lineStyle(6, 0xff6e5e, 0.75 * (1 - t));
+        g.strokeEllipse(f.x, f.y - 2, 26 + 52 * t, 40 + 60 * t);
+        g.fillStyle(0xffc24d, 0.8 * (1 - t));
+        g.fillCircle(f.x, f.y - 2, 4 + 6 * t);
+        break;
       default:
         break;
     }
@@ -1624,7 +1730,7 @@ export class BattleScene extends Phaser.Scene {
       this.gfx.strokeCircle(b.x, b.y, b.r * (0.4 + 0.5 * t));
     }
     const pulse = 1.05 + 0.12 * Math.sin(now / 70);
-    // 0 火球 / 1 飞镖 / 2 烈炎弹 / 3 梦火弹 / 4 元素火弹 / 5 待爆水弹
+    // 0 火球 / 1 飞镖 / 2 烈炎弹 / 3 梦火弹 / 4 元素火弹 / 5 待爆水弹 / 6 冰封球 / 8 星屑
     const texOf: Record<number, { key: string; size: number }> = {
       0: { key: FIREBALL_KEY, size: 26 },
       1: { key: DART_KEY, size: 20 },
@@ -1632,6 +1738,8 @@ export class BattleScene extends Phaser.Scene {
       3: { key: DREAM_KEY, size: 30 },
       4: { key: ELEM_FIRE_KEY, size: 28 },
       5: { key: WATER_KEY, size: 34 },
+      6: { key: FROST_KEY, size: 28 },
+      8: { key: STAR_KEY, size: 18 },
     };
     for (const p of list) {
       seen.add(p.n);

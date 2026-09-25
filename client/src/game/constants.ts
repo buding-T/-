@@ -304,19 +304,19 @@ export const ELEM_FIRE_RECOIL = 430; // 放火时向后反冲
 export const ELEM_EARTH_FRAMES = 90; // 土盾持续 1.5 秒
 export const ELEM_EARTH_KB_MUL = 0.75; // 土盾抵消 25% 击退
 
-// 幻棱（16）：闪避姿态 0.5 秒——期间受击则闪避成功：
-// 吞下来袭，进入 1 秒特写慢动作（期间无敌），并解锁二段；
-// 二段：瞬移到约 0.8 个突进范围内敌人身后，0.25 秒后造成敌人当前击飞值 85% 的伤害。
+// 幻棱（16）：超低空横掠闪避 0.4 秒——期间受击则闪避成功：
+// 吞下来袭，进入特写慢动作（实际约 1 秒，期间无敌），并解锁二段；
+// 二段：瞬移到约 0.8 个突进范围内敌人身后，0.1 秒后瞬斩造成敌人当前击飞值 85% 的伤害。
 // 闪避落空进入 13.5 秒 CD；二段出手后进入 9.5 秒 CD。
-export const SKILL16_DODGE_FRAMES = 30; // 0.5 秒闪避窗口
-export const SKILL16_SLOW_FRAMES = 60; // 特写慢动作 1 秒
+export const SKILL16_DODGE_FRAMES = 24; // 0.4 秒闪避窗口
+export const SKILL16_SLOW_FRAMES = 27; // 特写慢动作（0.45 倍速下实际约 1 秒）
 export const SKILL16_FAIL_CD = 810; // 13.5 秒
 export const SKILL16_DONE_CD = 570; // 9.5 秒
 export const SKILL16_TELE_R = 120; // 0.8 个突进距离（≈150px）
-export const SKILL16_DELAY_FRAMES = 15; // 瞬移后 0.25 秒发动
+export const SKILL16_DELAY_FRAMES = 6; // 瞬移后 0.1 秒瞬斩
 export const SKILL16_DMG = 0.85; // 造成敌人当前击飞值 85% 的伤害
-export const SKILL16_FIZZLE_LOCK = 10; // 二段无目标时的短动作
-export const SKILL16_STRIKE_LOCK = 26; // 二段出手后的总锁定
+export const SKILL16_FIZZLE_LOCK = 8; // 二段无目标时的短动作
+export const SKILL16_STRIKE_LOCK = 12; // 二段瞬斩后的小后摇
 
 // 源（17）：纯被动——成功命中敌人 4 次后，下次攻击额外造成 80% 伤害
 export const SKILL17_HITS = 4;
@@ -419,6 +419,40 @@ export const ARC5_LOCK = 16;
 export const ARC5_ARMOR_FRAMES = 300;
 export const ARC5_KB_MUL = 0.55;
 export const ARC5_REFLECT = 0.05;
+// 6 冰封领域：投出冰球（命中 35% 击飞值小击退），落点展开 4 秒冰封领域，
+// 域内敌人水平移速 -50%（跳起可越过），冷却 18 秒
+export const ARC6_CD_FRAMES = 1080;
+export const ARC6_LOCK = 18;
+export const ARC6_ORB_SPEED = 430;
+export const ARC6_ORB_R = 12;
+export const ARC6_ORB_LIFE = 90;
+export const ARC6_HIT_KB = 0.35;
+export const ARC6_ZONE_W = 132;
+export const ARC6_ZONE_FRAMES = 240;
+export const ARC6_ZONE_DAMP = 0.82; // 每帧速度阻尼（稳态移速约 50%）
+// 7 雷光瞬闪：0.13 秒无敌前掠约 230px，掠过敌人造成其当前击飞值 50% 的伤害，
+// 随后 10 帧收招（可被惩罚），冷却 14 秒
+export const ARC7_CD_FRAMES = 840;
+export const ARC7_LOCK = 18;
+export const ARC7_DASH_FRAMES = 8;
+export const ARC7_DASH_SPEED = 1725; // 8 帧 ≈ 230px
+export const ARC7_DMG = 0.5;
+// 8 三连星：扇形射出 3 枚星屑，每枚 4 伤害、小击退，射程短，冷却 11 秒
+export const ARC8_CD_FRAMES = 660;
+export const ARC8_LOCK = 16;
+export const ARC8_STAR_SPEED = 500;
+export const ARC8_STAR_R = 7;
+export const ARC8_STAR_LIFE = 70;
+export const ARC8_SPREAD = 0.22;
+export const ARC8_STAR_DMG = 4;
+export const ARC8_STAR_BASE = 120;
+export const ARC8_STAR_GROWTH = 4;
+// 9 焚血狂战：6 秒内造成伤害 +30%，但受到的击退 +15%（玻璃大炮），冷却 20 秒
+export const ARC9_CD_FRAMES = 1200;
+export const ARC9_LOCK = 12;
+export const ARC9_FRAMES = 360;
+export const ARC9_DMG_MUL = 1.3;
+export const ARC9_KB_MUL = 1.15;
 
 /** 各秘术的施法定身帧（1 迅捷为被动，0） */
 export const ARCANA_LOCK_FRAMES = [
@@ -428,6 +462,10 @@ export const ARCANA_LOCK_FRAMES = [
   ARC3_WING_FRAMES,
   ARC4_TOTAL,
   ARC5_LOCK,
+  ARC6_LOCK,
+  ARC7_LOCK,
+  ARC8_LOCK,
+  ARC9_LOCK,
 ];
 /** 各秘术冷却（1 迅捷为被动，0） */
 export const ARCANA_CD_FRAMES = [
@@ -437,6 +475,10 @@ export const ARCANA_CD_FRAMES = [
   ARC3_CD_FRAMES,
   ARC4_CD_FRAMES,
   ARC5_CD_FRAMES,
+  ARC6_CD_FRAMES,
+  ARC7_CD_FRAMES,
+  ARC8_CD_FRAMES,
+  ARC9_CD_FRAMES,
 ];
 
 export interface ArcanaDef {
@@ -484,6 +526,30 @@ export const ARCANAS: ArcanaDef[] = [
     title: '主动 · Q',
     desc: '5 秒霸体：击退 -45%，并反震 5% 击退 · 26 秒冷却',
     color: 0xb58bff,
+  },
+  {
+    name: '冰封领域',
+    title: '主动 · Q',
+    desc: '投出冰球，落点展开 4 秒冰封领域，域内移速 -50% · 18 秒冷却',
+    color: 0x8fe3ff,
+  },
+  {
+    name: '雷光瞬闪',
+    title: '主动 · Q',
+    desc: '无敌前掠 230px，掠过敌人造成其击飞值 50% 伤害 · 14 秒冷却',
+    color: 0x6fa8ff,
+  },
+  {
+    name: '三连星',
+    title: '主动 · Q',
+    desc: '扇形射出 3 枚星屑，每枚 4 伤害 · 11 秒冷却',
+    color: 0xffd978,
+  },
+  {
+    name: '焚血狂战',
+    title: '主动 · Q',
+    desc: '6 秒内伤害 +30%，但受到击退 +15% · 20 秒冷却',
+    color: 0xff6e5e,
   },
 ];
 

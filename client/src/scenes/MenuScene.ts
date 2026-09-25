@@ -7,12 +7,14 @@ import {
 } from '../game/characters';
 import { ARCANAS, COLORS, MAPS, VIEW_H, VIEW_W } from '../game/constants';
 
-// 角色卡片：4 列 × 4 行（共 16 名角色）
+// 角色卡片：4 列 × 5 行（共 20 名角色）；卡片只放精灵/名字/称号，
+// 技能描述在下方固定详情区显示，避免 5 行挤压重叠
 const COLS = 4;
 const CARD_W = 270;
-const CARD_H = 116;
+const CARD_H = 80;
 const CARD_XS = [196, 492, 788, 1084];
-const CARD_YS = [162, 282, 402, 522];
+const CARD_YS = [146, 228, 310, 392, 474];
+const DETAIL_Y = 548;
 const cardPos = (i: number) => ({
   cx: CARD_XS[i % COLS],
   cy: CARD_YS[Math.floor(i / COLS)],
@@ -20,12 +22,17 @@ const cardPos = (i: number) => ({
 const CHAR_KEY_STORAGE = 'pf-char';
 const ARC_KEY_STORAGE = 'pf-arcana';
 
-// 秘术卡片：6 张一排
-const ARC_W = 184;
-const ARC_H = 252;
-const ARC_STEP = 200;
-const ARC_X0 = 140;
-const ARC_Y = 352;
+// 秘术卡片：5 列 × 2 行（共 10 张）
+const ARC_COLS = 5;
+const ARC_W = 218;
+const ARC_H = 172;
+const ARC_STEP = 226;
+const ARC_X0 = 188;
+const ARC_YS = [268, 448];
+const arcPos = (i: number) => ({
+  cx: ARC_X0 + (i % ARC_COLS) * ARC_STEP,
+  cy: ARC_YS[Math.floor(i / ARC_COLS)],
+});
 
 type Pending = 'host' | 'join' | 'bot';
 type Btn = {
@@ -48,6 +55,7 @@ export class MenuScene extends Phaser.Scene {
   private cardGfx: Phaser.GameObjects.Graphics[] = [];
   private cardSprs: Phaser.GameObjects.Sprite[] = [];
   private checkTexts: Phaser.GameObjects.Text[] = [];
+  private detailText!: Phaser.GameObjects.Text;
   private page2Objs: Phaser.GameObjects.Components.Visible[] = [];
   private arcGfx: Phaser.GameObjects.Graphics[] = [];
   private arcChecks: Phaser.GameObjects.Text[] = [];
@@ -102,7 +110,7 @@ export class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // 角色卡片（4 列 × 4 行）
+    // 角色卡片（4 列 × 5 行）
     CHARACTERS.forEach((def, i) => {
       const { cx, cy } = cardPos(i);
       const g = this.add.graphics();
@@ -116,35 +124,25 @@ export class MenuScene extends Phaser.Scene {
 
       // 待机动画预览
       const spr = this.add
-        .sprite(cx, cy - 30, sheetKey(i), 0)
-        .setScale(1.7)
+        .sprite(cx, cy - 24, sheetKey(i), 0)
+        .setScale(1.5)
         .play(animKey(i, 'idle' as AnimState));
       this.cardSprs.push(spr);
 
       this.add
-        .text(cx, cy + 4, def.name, {
+        .text(cx, cy + 8, def.name, {
           fontFamily: 'system-ui, sans-serif',
-          fontSize: '17px',
+          fontSize: '16px',
           fontStyle: 'bold',
           color: '#ffffff',
         })
         .setOrigin(0.5);
 
       this.add
-        .text(cx, cy + 21, def.title, {
+        .text(cx, cy + 24, def.title, {
           fontFamily: 'system-ui, sans-serif',
           fontSize: '10px',
           color: '#9aa3d4',
-        })
-        .setOrigin(0.5);
-
-      this.add
-        .text(cx, cy + 39, def.skillDesc, {
-          fontFamily: 'system-ui, sans-serif',
-          fontSize: '9px',
-          color: '#ffb866',
-          align: 'center',
-          wordWrap: { width: CARD_W - 16 },
         })
         .setOrigin(0.5);
 
@@ -161,9 +159,9 @@ export class MenuScene extends Phaser.Scene {
       }
 
       const check = this.add
-        .text(cx, cy + CARD_H / 2 - 9, '✓ 已选择', {
+        .text(cx + CARD_W / 2 - 16, cy - CARD_H / 2 + 13, '✓', {
           fontFamily: 'system-ui, sans-serif',
-          fontSize: '12px',
+          fontSize: '18px',
           fontStyle: 'bold',
           color: '#7ee0a3',
         })
@@ -171,14 +169,25 @@ export class MenuScene extends Phaser.Scene {
       this.checkTexts.push(check);
 
       // 选中时预览略放大
-      spr.setScale(i === this.selected ? 1.95 : 1.7);
+      spr.setScale(i === this.selected ? 1.75 : 1.5);
     });
+
+    // 固定详情区：显示当前选中角色的技能说明
+    this.detailText = this.add
+      .text(VIEW_W / 2, DETAIL_Y, '', {
+        fontFamily: 'system-ui, sans-serif',
+        fontSize: '14px',
+        color: '#ffb866',
+        align: 'center',
+        wordWrap: { width: 1100 },
+      })
+      .setOrigin(0.5);
 
     // 第一页按钮：创建房间 / 人机对战 / 加入房间（均先进第二页选秘术）
     // 三个按钮中心点 300/640/980，间距 40px，避免视觉重叠
-    this.makeButton(300, 626, '创建房间', 0x2f7fff, () => this.openPage2('host'));
-    this.makeButton(640, 626, '人机对战', 0x22aa66, () => this.openPage2('bot'));
-    this.makeButton(980, 626, '加入房间', 0xff3355, () => this.openPage2('join'));
+    this.makeButton(300, 604, '创建房间', 0x2f7fff, () => this.openPage2('host'));
+    this.makeButton(640, 604, '人机对战', 0x22aa66, () => this.openPage2('bot'));
+    this.makeButton(980, 604, '加入房间', 0xff3355, () => this.openPage2('join'));
 
     this.add
       .text(
@@ -230,26 +239,25 @@ export class MenuScene extends Phaser.Scene {
     );
     add2(
       this.add
-        .text(VIEW_W / 2, 102, '对局中按 Q 使用（迅捷为被动，无需按键）　数字键 1-6 选择，Esc 返回', {
+        .text(VIEW_W / 2, 100, '对局中按 Q 使用（迅捷为被动，无需按键）　数字键 1-9、0 选择，Esc 返回', {
           fontFamily: 'system-ui, sans-serif',
-          fontSize: '17px',
+          fontSize: '16px',
           color: '#9aa3d4',
         })
         .setOrigin(0.5),
     );
     this.arcSummary = add2(
       this.add
-        .text(VIEW_W / 2, 136, '', {
+        .text(VIEW_W / 2, 130, '', {
           fontFamily: 'system-ui, sans-serif',
-          fontSize: '18px',
+          fontSize: '17px',
           color: '#ffd166',
         })
         .setOrigin(0.5),
     );
 
     ARCANAS.forEach((def, i) => {
-      const cx = ARC_X0 + i * ARC_STEP;
-      const cy = ARC_Y;
+      const { cx, cy } = arcPos(i);
       const g = add2(this.add.graphics());
       this.arcGfx.push(g);
 
@@ -262,9 +270,9 @@ export class MenuScene extends Phaser.Scene {
 
       add2(
         this.add
-          .text(cx - ARC_W / 2 + 16, cy - ARC_H / 2 + 16, String(i + 1), {
+          .text(cx - ARC_W / 2 + 15, cy - ARC_H / 2 + 14, i === 9 ? '0' : String(i + 1), {
             fontFamily: 'system-ui, sans-serif',
-            fontSize: '18px',
+            fontSize: '17px',
             fontStyle: 'bold',
             color: '#7a82b4',
           })
@@ -272,9 +280,9 @@ export class MenuScene extends Phaser.Scene {
       );
       add2(
         this.add
-          .text(cx, cy - 72, def.name, {
+          .text(cx, cy - 52, def.name, {
             fontFamily: 'system-ui, sans-serif',
-            fontSize: '24px',
+            fontSize: '22px',
             fontStyle: 'bold',
             color: '#ffffff',
           })
@@ -282,29 +290,29 @@ export class MenuScene extends Phaser.Scene {
       );
       add2(
         this.add
-          .text(cx, cy - 44, def.title, {
+          .text(cx, cy - 30, def.title, {
             fontFamily: 'system-ui, sans-serif',
-            fontSize: '13px',
+            fontSize: '12px',
             color: '#9aa3d4',
           })
           .setOrigin(0.5),
       );
       add2(
         this.add
-          .text(cx, cy + 18, def.desc, {
+          .text(cx, cy + 22, def.desc, {
             fontFamily: 'system-ui, sans-serif',
-            fontSize: '13px',
+            fontSize: '12px',
             color: '#cdd4ff',
             align: 'center',
-            wordWrap: { width: ARC_W - 22 },
+            wordWrap: { width: ARC_W - 20 },
           })
           .setOrigin(0.5),
       );
       const check = add2(
         this.add
-          .text(cx, cy + ARC_H / 2 - 16, '✓ 已携带', {
+          .text(cx, cy + ARC_H / 2 - 14, '✓ 已携带', {
             fontFamily: 'system-ui, sans-serif',
-            fontSize: '15px',
+            fontSize: '14px',
             fontStyle: 'bold',
             color: '#7ee0a3',
           })
@@ -313,7 +321,7 @@ export class MenuScene extends Phaser.Scene {
       this.arcChecks.push(check);
     });
 
-    const by = 600;
+    const by = 588;
     this.confirmBtns.host = this.makePage2Button(
       640,
       by,
@@ -507,16 +515,18 @@ export class MenuScene extends Phaser.Scene {
         );
       }
       this.checkTexts[i].setVisible(sel);
-      this.cardSprs[i].setScale(sel ? 1.95 : 1.7);
+      this.cardSprs[i].setScale(sel ? 1.75 : 1.5);
     });
+    // 更新固定详情区
+    const d = CHARACTERS[this.selected];
+    this.detailText.setText(`${d.name} · ${d.title}　—　${d.skillDesc}`);
   }
 
   private refreshArcCards() {
     ARCANAS.forEach((def, i) => {
       const g = this.arcGfx[i];
       if (!g) return;
-      const cx = ARC_X0 + i * ARC_STEP;
-      const cy = ARC_Y;
+      const { cx, cy } = arcPos(i);
       const sel = i === this.arcana;
       g.clear();
       g.fillStyle(sel ? 0x241d44 : 0x161a30, sel ? 1 : 0.92);
@@ -641,7 +651,8 @@ export class MenuScene extends Phaser.Scene {
         return;
       }
       const num = Number(e.key);
-      if (num >= 1 && num <= 6) this.selectArcana(num - 1);
+      if (num >= 1 && num <= 9) this.selectArcana(num - 1);
+      else if (e.key === '0') this.selectArcana(9);
       else if (e.key === 'Escape' || e.key === 'Tab' || e.key === 'Backspace') {
         if (e.key === 'Tab') e.preventDefault();
         this.backToPage1();

@@ -2,7 +2,7 @@
 // - 信令（WebSocket，可靠）：建房间 / 加入 / 交换 WebRTC SDP 与 ICE
 // - 对战（RTCDataChannel game，不可靠无序）：输入与快照，允许丢帧
 // - 对战（RTCDataChannel ctl，可靠有序）：开局 / 重开等控制消息
-import type { Fighter, Projectile } from '../game/sim';
+import type { Fighter, FrostZone, Projectile } from '../game/sim';
 
 // ---------------------------------------------------------------------------
 // 信令消息（浏览器 <-> Node 信令服务器）
@@ -86,6 +86,8 @@ export interface SnapshotMessage {
   f: [Fighter, Fighter];
   /** 权威端飞行物（火球等） */
   p: Projectile[];
+  /** 权威端冰封领域（地面减速区） */
+  z?: FrostZone[];
 }
 
 export interface HelloMessage {
