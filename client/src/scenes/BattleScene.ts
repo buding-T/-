@@ -86,7 +86,7 @@ import {
   type SnapshotMessage,
 } from '../net/protocol';
 
-type Phase = 'count' | 'fight' | 'over';
+type Phase = 'intro' | 'count' | 'fight' | 'over';
 
 interface RemoteEntry {
   snap: SnapshotMessage;
@@ -99,6 +99,7 @@ interface BattleData {
   vsBot?: boolean;
 }
 
+const INTRO_MS = 2000; // 出场动画时长
 const COUNTDOWN_MS = 3000;
 const GO_MS = 700;
 const BANNER_MS = 1100;
@@ -169,7 +170,7 @@ export class BattleScene extends Phaser.Scene {
     this.vsBot = data.vsBot === true;
     this.myId = this.role === 'host' ? 0 : 1;
     this.remoteSeed = createFighter((1 - this.myId) as 0 | 1);
-    this.phase = 'count';
+    this.phase = 'intro';
     this.phaseT = 0;
     this.acc = 0;
     this.bannerT = 0;
@@ -620,6 +621,15 @@ export class BattleScene extends Phaser.Scene {
       if (this.bannerT <= 0 && this.phase === 'fight') this.banner.setText('');
     }
 
+    if (this.phase === 'intro') {
+      if (this.phaseT >= INTRO_MS) {
+        this.phase = 'count';
+        this.phaseT = 0;
+      }
+      this.render();
+      return;
+    }
+
     if (this.phase === 'count') {
       const left = COUNTDOWN_MS - this.phaseT;
       if (left > 0) {
@@ -915,6 +925,14 @@ export class BattleScene extends Phaser.Scene {
           ? this.predicted
           : (this.getRemoteRender() ?? this.remoteSeed);
 
+    if (this.phase === 'intro') {
+      const t = Math.min(1, this.phaseT / INTRO_MS);
+      const ease = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      this.drawIntro(g, f0, f1, t, ease);
+      this.updateHud(f0, f1);
+      return; // 出场期间跳过阴影/技能特效
+    }
+
     this.drawShadow(f0);
     this.drawShadow(f1);
     this.updateFighterVisual(0, f0);
@@ -1085,6 +1103,269 @@ export class BattleScene extends Phaser.Scene {
       );
     } else {
       spr.setRotation(0);
+    }
+  }
+
+  /** 出场动画：双方角色专属 2 秒入场特效（角色最后 0.3 秒淡入） */
+  private drawIntro(
+    g: Phaser.GameObjects.Graphics,
+    f0: Fighter,
+    f1: Fighter,
+    t: number,
+    ease: number,
+  ) {
+    void g; // 特效统一绘制在背景层
+    const now = performance.now();
+    for (let id = 0; id < 2; id++) {
+      const f = id === 0 ? f0 : f1;
+      const ch = this.chars[id];
+      const x = f.x;
+      const y = f.y;
+      const face = f.face;
+      const fadeIn = Math.max(0, Math.min(1, (t - 0.7) / 0.3));
+      const spr = this.spr[id];
+      spr.setAlpha(fadeIn);
+      spr.setVisible(fadeIn > 0);
+      if (fadeIn > 0) {
+        spr.setPosition(x, y + f.h / 2 + 1);
+        spr.setFlipX(face < 0);
+      }
+      const gb = this.gfxBack;
+      switch (ch) {
+        case 0: {
+          const r = 12 + ease * 28;
+          gb.fillStyle(0xff4422, 0.4 * (1 - t));
+          gb.fillCircle(x, y + 20, r);
+          gb.lineStyle(2, 0xff6644, 0.8 * (1 - t));
+          gb.strokeCircle(x, y + 20, r);
+          for (let i = 0; i < 5; i++) {
+            const a = now / 200 + (i * Math.PI * 2) / 5;
+            gb.fillStyle(0xffaa33, 0.7 * (1 - t));
+            gb.fillCircle(x + Math.cos(a) * r * 0.7, y + 20 + Math.sin(a) * 8, 3);
+          }
+          break;
+        }
+        case 1: {
+          for (let i = 0; i < 6; i++) {
+            const a = now / 180 + (i * Math.PI * 2) / 6;
+            const dist = 20 + ease * 40;
+            gb.fillStyle(0x44dd88, 0.7 * (1 - t));
+            gb.fillEllipse(x + Math.cos(a) * dist, y + 10 + Math.sin(a) * dist * 0.3 - ease * 30, 6, 3);
+          }
+          gb.lineStyle(2, 0x66cc88, 0.5 * (1 - t));
+          gb.strokeEllipse(x, y + 10, 30 + ease * 50, 20 + ease * 20);
+          break;
+        }
+        case 2: {
+          const ringR = 10 + ease * 35;
+          gb.lineStyle(2, 0x4488ff, 0.8 * (1 - t));
+          gb.strokeCircle(x, y + 25, ringR);
+          gb.lineStyle(1, 0x88bbff, 0.5 * (1 - t));
+          gb.strokeCircle(x, y + 25, ringR * 0.6);
+          for (let i = 0; i < 8; i++) {
+            const a = (i * Math.PI) / 4;
+            gb.lineStyle(1, 0x6699ff, 0.4 * (1 - t));
+            gb.lineBetween(x, y + 25, x + Math.cos(a) * ringR, y + 25 + Math.sin(a) * ringR);
+          }
+          break;
+        }
+        case 3: {
+          const dartY = y + 30 - ease * 60;
+          gb.fillStyle(0xffee55, 0.9);
+          gb.fillTriangle(x - 4, dartY, x + 4, dartY - 2, x + 4, dartY + 2);
+          if (t > 0.5) {
+            const flash = (t - 0.5) * 2;
+            gb.fillStyle(0xffffff, 0.6 * flash);
+            gb.fillRect(x - 20, y - 20, 40, 50);
+          }
+          break;
+        }
+        case 4: {
+          for (let i = -2; i <= 2; i++) {
+            if (i === 0) continue;
+            const offset = i * 40 * (1 - ease);
+            gb.fillStyle(0x9a5cf6, 0.25 * (1 - t));
+            gb.fillRect(x + offset - 6, y - 10, 12, 30);
+          }
+          break;
+        }
+        case 5: {
+          for (let i = 0; i < 8; i++) {
+            const a = now / 200 + (i * Math.PI * 2) / 8;
+            const dist = (1 - ease) * 80;
+            const bx = x + Math.cos(a) * dist;
+            const by = y + Math.sin(a) * dist * 0.5;
+            const colors = [0xff99cc, 0xffcc99, 0x99ccff, 0xccff99];
+            gb.fillStyle(colors[i % 4], 0.8 * (1 - t));
+            gb.fillTriangle(bx, by - 3, bx - 3, by + 2, bx + 3, by + 2);
+          }
+          break;
+        }
+        case 6: {
+          if (t > 0.3 && t < 0.7) {
+            const flash = Math.sin(((t - 0.3) / 0.4) * Math.PI);
+            gb.lineStyle(4, 0xffffff, flash);
+            gb.lineBetween(x - 30, y, x + 30, y - 10);
+            gb.lineBetween(x - 25, y + 5, x + 25, y - 5);
+          }
+          gb.fillStyle(0xccaa77, 0.6 * (1 - t));
+          gb.fillRect(x - 3, y + 25, 6, 15);
+          break;
+        }
+        case 7: {
+          gb.fillStyle(0x110022, 0.6 * (1 - t));
+          gb.fillCircle(x, y + 10, 40 * (1 - t));
+          if (t < 0.6) {
+            gb.fillStyle(0xff0022, 0.9);
+            gb.fillCircle(x - 8, y + 5, 3);
+            gb.fillCircle(x + 8, y + 5, 3);
+          }
+          break;
+        }
+        case 8: {
+          for (let i = 0; i < 5; i++) {
+            const gy2 = y - 20 + i * 12;
+            const w = 20 + Math.sin(now / 100 + i) * 10;
+            gb.fillStyle(0x00ffcc, 0.3 * (1 - t));
+            gb.fillRect(x - w / 2, gy2, w, 3);
+          }
+          break;
+        }
+        case 9: {
+          const tearW = 2 + ease * 20;
+          gb.fillStyle(0x1a0033, 0.8 * (1 - t));
+          gb.fillEllipse(x, y + 15, tearW, 35);
+          gb.lineStyle(2, 0x6600cc, 0.7 * (1 - t));
+          gb.strokeEllipse(x, y + 15, tearW, 35);
+          for (let i = 0; i < 4; i++) {
+            gb.fillStyle(0xaa44ff, 0.9 * (1 - t));
+            gb.fillCircle(x + Math.sin(now / 200 + i * 1.7) * tearW * 0.4, y + 5 + i * 8, 1.5);
+          }
+          break;
+        }
+        case 10: {
+          for (let i = 0; i < 8; i++) {
+            const a = (i * Math.PI * 2) / 8;
+            const dist = ease * 50;
+            gb.fillStyle(0x887766, 0.7 * (1 - t));
+            gb.fillRect(x + Math.cos(a) * dist - 2, y + 25 + Math.sin(a) * dist * 0.3, 4, 4);
+          }
+          gb.fillStyle(0x554433, 0.5 * (1 - t));
+          gb.fillCircle(x, y + 28, 15 * ease);
+          break;
+        }
+        case 11: {
+          gb.fillStyle(0xffeeaa, 0.15 * (1 - t));
+          gb.fillRect(x - 25, y - 60, 50, 80);
+          gb.lineStyle(2, 0xffdd88, 0.5 * (1 - t));
+          gb.strokeRect(x - 20, y - 55, 40, 70);
+          for (let i = 0; i < 6; i++) {
+            gb.fillStyle(0xffffff, 0.8 * (1 - t));
+            gb.fillCircle(x + Math.sin(now / 250 + i * 2.1) * 15, y - 30 + (i % 3) * 25, 2);
+          }
+          break;
+        }
+        case 12: {
+          if (t < 0.6) {
+            gb.fillStyle(0xffaa88, 0.8);
+            gb.fillTriangle(x - 6, y - 5, x - 2, y - 15, x + 2, y - 5);
+            gb.fillTriangle(x + 2, y - 5, x + 6, y - 15, x + 10, y - 5);
+            gb.lineStyle(3, 0xffaa88, 0.8);
+            gb.lineBetween(x + 8, y + 10, x + 15, y + 5);
+          }
+          break;
+        }
+        case 13: {
+          for (let i = 0; i < 10; i++) {
+            const a = now / 150 + (i * Math.PI * 2) / 10;
+            const dist = (1 - ease) * 100;
+            const cx = x + Math.cos(a) * dist;
+            const cy = y - 20 + Math.sin(a) * dist * 0.5;
+            gb.fillStyle(0x221133, 0.8 * (1 - t));
+            gb.fillEllipse(cx, cy, 8, 4);
+            gb.lineStyle(1, 0x442255, 0.5 * (1 - t));
+            gb.strokeEllipse(cx, cy, 8, 4);
+          }
+          break;
+        }
+        case 14: {
+          for (let i = 0; i < 5; i++) {
+            const by = y + 30 - ease * 60 - i * 10;
+            const r = 5 + i * 2;
+            gb.lineStyle(1, 0xaaddff, 0.5 * (1 - t));
+            gb.strokeCircle(x + Math.sin(now / 300 + i) * 10, by, r);
+          }
+          break;
+        }
+        case 15: {
+          const colors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff];
+          for (let i = 0; i < 5; i++) {
+            const a = now / 300 + (i * Math.PI * 2) / 5;
+            const dist = 35 * (1 - ease * 0.5);
+            const ex = x + Math.cos(a) * dist;
+            const ey = y - 5 + Math.sin(a) * dist * 0.5;
+            gb.fillStyle(colors[i], 0.7 * (1 - t));
+            gb.fillCircle(ex, ey, 5);
+            if (t > 0.7) {
+              gb.lineStyle(1, colors[i], (t - 0.7) * 3);
+              gb.lineBetween(ex, ey, x, y - 5);
+            }
+          }
+          break;
+        }
+        case 16: {
+          for (let i = 0; i < 6; i++) {
+            const a = (i * Math.PI) / 3;
+            gb.lineStyle(1, 0x88ccff, 0.4 * (1 - t));
+            gb.lineBetween(x, y - 5, x + Math.cos(a) * 40, y - 5 + Math.sin(a) * 40);
+          }
+          for (let i = -2; i <= 2; i++) {
+            if (i === 0) continue;
+            gb.fillStyle(0xaaddff, 0.15 * (1 - t));
+            gb.fillRect(x + i * 12 - 4, y - 15, 8, 30);
+          }
+          break;
+        }
+        case 17: {
+          const coreR = 3 + ease * 15;
+          gb.fillStyle(0xffaa44, 0.3 * (1 - t));
+          gb.fillCircle(x, y - 5, coreR);
+          gb.lineStyle(2, 0xffcc66, 0.8 * (1 - t));
+          gb.strokeCircle(x, y - 5, coreR);
+          for (let i = 0; i < 8; i++) {
+            const a = (i * Math.PI) / 4 + now / 200;
+            gb.lineStyle(1, 0xffdd88, 0.5 * (1 - t));
+            gb.lineBetween(x, y - 5, x + Math.cos(a) * coreR * 1.5, y - 5 + Math.sin(a) * coreR * 1.5);
+          }
+          break;
+        }
+        case 18: {
+          for (let i = 0; i < 12; i++) {
+            const a = now / 120 + (i * Math.PI * 2) / 12;
+            const dist = (1 - ease) * 80;
+            const bx = x + Math.cos(a) * dist;
+            const by = y - 30 + Math.sin(a) * dist * 0.5;
+            gb.fillStyle(0x220011, 0.8 * (1 - t));
+            gb.fillEllipse(bx, by, 6, 3);
+            gb.lineStyle(1, 0x440022, 0.5 * (1 - t));
+            gb.strokeEllipse(bx, by, 6, 3);
+          }
+          break;
+        }
+        case 19: {
+          for (let i = 0; i < 10; i++) {
+            const a = (i * Math.PI * 2) / 10;
+            const dist = ease * 60;
+            gb.fillStyle(0x665544, 0.8 * (1 - t));
+            gb.fillRect(x + Math.cos(a) * dist - 2, y + 25 + Math.sin(a) * dist * 0.3, 4, 4);
+            gb.fillStyle(0xff4422, 0.6 * (1 - t));
+            gb.fillCircle(x + Math.cos(a) * dist * 0.7, y + 20 + Math.sin(a) * 5, 2);
+          }
+          gb.fillStyle(0x332211, 0.5 * (1 - t));
+          gb.fillCircle(x, y + 28, 20 * ease);
+          break;
+        }
+      }
     }
   }
 

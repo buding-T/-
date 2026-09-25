@@ -71,6 +71,13 @@ export class MenuScene extends Phaser.Scene {
     this.joining = false;
     this.joinMode = false;
     this.page = 0;
+    // 场景重启（战斗返回）时重置收集器，避免新对象叠在旧数组尾部
+    this.cardGfx = [];
+    this.cardSprs = [];
+    this.checkTexts = [];
+    this.page2Objs = [];
+    this.arcGfx = [];
+    this.arcChecks = [];
     const saved = Number(window.localStorage.getItem(CHAR_KEY_STORAGE));
     this.selected = Number.isInteger(saved) && saved >= 0 && saved < CHARACTERS.length
       ? saved
@@ -543,6 +550,90 @@ export class MenuScene extends Phaser.Scene {
       } else {
         g.lineStyle(1, 0x3a4070, 0.8);
         g.strokeRoundedRect(cx - ARC_W / 2, cy - ARC_H / 2, ARC_W, ARC_H, 14);
+      }
+      // 秘术中心图标（几何符号，与秘术主题对应）
+      const ix = cx;
+      const iy = cy - 6;
+      const ic = def.color;
+      g.lineStyle(2, ic, sel ? 1 : 0.75);
+      g.fillStyle(ic, sel ? 0.28 : 0.18);
+      switch (i) {
+        case 0: { // 回春：十字
+          g.lineStyle(2.5, ic, sel ? 1 : 0.8);
+          g.lineBetween(ix - 7, iy, ix + 7, iy);
+          g.lineBetween(ix, iy - 7, ix, iy + 7);
+          break;
+        }
+        case 1: { // 迅捷：向右箭头
+          g.lineBetween(ix - 8, iy, ix + 4, iy);
+          g.lineBetween(ix, iy - 5, ix + 6, iy);
+          g.lineBetween(ix, iy + 5, ix + 6, iy);
+          break;
+        }
+        case 2: { // 烈炎弹：火球
+          g.fillCircle(ix, iy, 6.5);
+          g.strokeCircle(ix, iy, 6.5);
+          break;
+        }
+        case 3: { // 风翼：向上箭头
+          g.lineBetween(ix, iy + 7, ix, iy - 5);
+          g.lineBetween(ix - 5, iy, ix, iy - 7);
+          g.lineBetween(ix + 5, iy, ix, iy - 7);
+          break;
+        }
+        case 4: { // 重击：锤头
+          g.fillRect(ix - 3, iy - 7, 6, 10);
+          g.fillRect(ix - 6, iy + 3, 12, 3);
+          break;
+        }
+        case 5: { // 霸体：盾牌
+          g.beginPath();
+          g.moveTo(ix, iy - 8);
+          g.lineTo(ix + 7, iy - 4);
+          g.lineTo(ix + 7, iy + 2);
+          g.lineTo(ix, iy + 7);
+          g.lineTo(ix - 7, iy + 2);
+          g.lineTo(ix - 7, iy - 4);
+          g.closePath();
+          g.strokePath();
+          g.fillPath();
+          break;
+        }
+        case 6: { // 冰封领域：六角雪花
+          for (let a = 0; a < 6; a++) {
+            const rad = (a * Math.PI) / 3;
+            g.lineBetween(ix, iy, ix + Math.cos(rad) * 8, iy + Math.sin(rad) * 8);
+          }
+          g.strokeCircle(ix, iy, 2.5);
+          break;
+        }
+        case 7: { // 雷光瞬闪：闪电折线
+          g.lineStyle(2.5, ic, sel ? 1 : 0.85);
+          g.lineBetween(ix - 4, iy - 7, ix + 2, iy - 1);
+          g.lineBetween(ix + 2, iy - 1, ix - 2, iy + 1);
+          g.lineBetween(ix - 2, iy + 1, ix + 4, iy + 7);
+          break;
+        }
+        case 8: { // 三连星：三颗小圆
+          for (let s = -1; s <= 1; s++) {
+            g.fillCircle(ix + s * 7, iy, 2.5);
+          }
+          break;
+        }
+        case 9: { // 焚血狂战：火焰菱形
+          g.beginPath();
+          g.moveTo(ix, iy - 8);
+          g.lineTo(ix + 5, iy + 2);
+          g.lineTo(ix + 2, iy + 2);
+          g.lineTo(ix + 4, iy + 7);
+          g.lineTo(ix - 4, iy + 7);
+          g.lineTo(ix - 2, iy + 2);
+          g.lineTo(ix - 5, iy + 2);
+          g.closePath();
+          g.strokePath();
+          g.fillPath();
+          break;
+        }
       }
       this.arcChecks[i].setVisible(sel);
     });
