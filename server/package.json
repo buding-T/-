@@ -1,0 +1,14 @@
+{
+  "name": "pf-signal-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WebRTC 信令服务器：房间匹配 + SDP/ICE 中转",
+  "main": "signal.js",
+  "scripts": {
+    "start": "node signal.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

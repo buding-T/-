@@ -1,0 +1,16 @@
+{
+  "name": "platform-fighter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "2D 网页平台格斗联机游戏（Phaser 3 + WebRTC P2P）",
+  "scripts": {
+    "setup": "npm --prefix server install && npm --prefix client install",
+    "dev": "concurrently -k -n SERVER,WEB -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm --prefix server start",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
