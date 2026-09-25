@@ -1850,7 +1850,7 @@ export class Sim {
       const range = SKILL19_RANGE_MIN + (SKILL19_RANGE_MAX - SKILL19_RANGE_MIN) * t;
       caster.skillCd = SKILL19_CD_FRAMES;
       caster.manBurstT = SKILL19_BURST_FRAMES;
-      caster.skillPhase = 0;
+      // phase 保持 1（轰拳收招），由 stepFighter 锁定表按 SKILL19_LOCK 帧退出
       caster.manCharge = 0;
       if (
         !isUntouchable(target) &&

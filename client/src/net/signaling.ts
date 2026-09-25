@@ -61,8 +61,13 @@ export class Signaling {
 }
 
 export function defaultSignalUrl(): string {
+  // 1) URL 参数 ?srv=wss://xxx（最高优先级，用于调试）
   const override = new URLSearchParams(window.location.search).get('srv');
   if (override) return override;
+  // 2) 环境变量（Vite 构建时注入，用于生产部署）
+  const envUrl = import.meta.env.VITE_SIGNAL_URL as string | undefined;
+  if (envUrl) return envUrl;
+  // 3) 本地开发默认
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
   return `${proto}://${window.location.hostname}:8080/ws`;
 }
